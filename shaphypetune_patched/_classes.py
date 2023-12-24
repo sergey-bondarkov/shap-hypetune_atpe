@@ -10,14 +10,14 @@ from sklearn.utils.validation import check_is_fitted
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from joblib import Parallel, delayed
-from hyperopt import fmin, tpe
+from hyperopt import fmin, tpe, atpe
 
 from .utils import ParameterSampler, _check_param, _check_boosting
 from .utils import _set_categorical_indexes, _get_categorical_support
 from .utils import _feature_importances, _shap_importances
 
 
-class _BoostSearch(BaseEstimator):
+class _BoostSearch_TPE(BaseEstimator):
     """Base class for BoostSearch meta-estimator.
 
     Warning: This class should not be used directly. Use derived classes
@@ -39,23 +39,23 @@ class _BoostSearch(BaseEstimator):
 
         if 'eval_set' not in fit_params:
             raise ValueError(
-                "When tuning parameters, at least "
-                "a evaluation set is required.")
+                    "When tuning parameters, at least "
+                    "a evaluation set is required.")
 
         self._eval_score = np.argmax if self.greater_is_better else np.argmin
         self._score_sign = -1 if self.greater_is_better else 1
 
         rs = ParameterSampler(
-            n_iter=self.n_iter,
-            param_distributions=self._param_grid,
-            random_state=self.sampling_seed
-        )
+                n_iter=self.n_iter,
+                param_distributions=self._param_grid,
+                random_state=self.sampling_seed
+                )
         self._param_combi, self._tuning_type = rs.sample()
         self._trial_id = 1
 
         if self.verbose > 0:
             n_trials = self.n_iter if self._tuning_type is 'hyperopt' \
-                else len(self._param_combi)
+                    else len(self._param_combi)
             print("\n{} trials detected for {}\n".format(
                 n_trials, tuple(self.param_grid.keys())))
 
@@ -90,7 +90,7 @@ class _BoostSearch(BaseEstimator):
                 valid_id = list(results['booster'].evals_result_.keys())[-1]
                 eval_metric = list(results['booster'].evals_result_[valid_id])[-1]
                 results['iterations'] = \
-                    len(results['booster'].evals_result_[valid_id][eval_metric])
+                            len(results['booster'].evals_result_[valid_id][eval_metric])
         else:
             # w/ eval_set and w/ early_stopping_rounds
             if results['booster'].best_iteration_ is not None:
@@ -100,7 +100,7 @@ class _BoostSearch(BaseEstimator):
                 valid_id = list(results['booster'].evals_result_.keys())[-1]
                 eval_metric = list(results['booster'].evals_result_[valid_id])[-1]
                 results['iterations'] = \
-                    len(results['booster'].evals_result_[valid_id][eval_metric])
+                            len(results['booster'].evals_result_[valid_id][eval_metric])
 
         if self.boost_type_ == 'XGB':
             # w/ eval_set and w/ early_stopping_rounds
@@ -111,7 +111,7 @@ class _BoostSearch(BaseEstimator):
                 valid_id = list(results['booster'].evals_result_.keys())[-1]
                 eval_metric = list(results['booster'].evals_result_[valid_id])[-1]
                 results['loss'] = \
-                    results['booster'].evals_result_[valid_id][eval_metric][-1]
+                            results['booster'].evals_result_[valid_id][eval_metric][-1]
         else:
             valid_id = list(results['booster'].best_score_.keys())[-1]
             eval_metric = list(results['booster'].best_score_[valid_id])[-1]
@@ -120,10 +120,10 @@ class _BoostSearch(BaseEstimator):
         if params is not None:
             if self.verbose > 0:
                 msg = "trial: {} ### iterations: {} ### eval_score: {}".format(
-                    str(self._trial_id).zfill(4),
-                    str(results['iterations']).zfill(5),
-                    round(results['loss'], 5)
-                )
+                        str(self._trial_id).zfill(4),
+                        str(results['iterations']).zfill(5),
+                        round(results['loss'], 5)
+                        )
                 print(msg)
 
             self._trial_id += 1
@@ -173,25 +173,25 @@ class _BoostSearch(BaseEstimator):
             if self._tuning_type == 'hyperopt':
                 if trials is None:
                     raise ValueError(
-                        "trials must be not None when using hyperopt."
-                    )
+                            "trials must be not None when using hyperopt."
+                            )
 
                 search = fmin(
-                    fn=lambda p: self._fit(
-                        params=p, X=X, y=y, fit_params=fit_params
-                    ),
-                    space=self._param_combi, algo=tpe.suggest,
-                    max_evals=self.n_iter, trials=trials,
-                    rstate=np.random.RandomState(self.sampling_seed),
-                    show_progressbar=False, verbose=0
-                )
+                        fn=lambda p: self._fit(
+                            params=p, X=X, y=y, fit_params=fit_params
+                            ),
+                        space=self._param_combi, algo=tpe.suggest,
+                        max_evals=self.n_iter, trials=trials,
+                        rstate=np.random.RandomState(self.sampling_seed),
+                        show_progressbar=False, verbose=0
+                        )
                 all_results = trials.results
 
             else:
                 all_results = Parallel(
-                    n_jobs=self.n_jobs, verbose=self.verbose * int(bool(self.n_jobs))
-                )(delayed(self._fit)(X, y, fit_params, params)
-                  for params in self._param_combi)
+                        n_jobs=self.n_jobs, verbose=self.verbose * int(bool(self.n_jobs))
+                        )(delayed(self._fit)(X, y, fit_params, params)
+                                for params in self._param_combi)
 
             # extract results from parallel loops
             self.trials_, self.iterations_, self.scores_, models = [], [], [], []
@@ -209,6 +209,7 @@ class _BoostSearch(BaseEstimator):
             self.best_params_ = self.trials_[id_best]
             self.best_iter_ = self.iterations_[id_best]
             self.best_score_ = self.scores_[id_best]
+
             self.estimator_ = models[id_best]
 
             for v in vars(models[id_best]):
@@ -293,6 +294,260 @@ class _BoostSearch(BaseEstimator):
 
         return self.estimator_.score(X, y, sample_weight=sample_weight)
 
+class _BoostSearch_ATPE(BaseEstimator):
+
+    """Base class for BoostSearch meta-estimator.
+
+    Warning: This class should not be used directly. Use derived classes
+    instead.
+    """
+
+    def __init__(self):
+        pass
+
+    def _validate_param_grid(self, fit_params):
+        """Private method to validate fitting parameters."""
+
+        if not isinstance(self.param_grid, dict):
+            raise ValueError("Pass param_grid in dict format.")
+        self._param_grid = self.param_grid.copy()
+
+        for p_k, p_v in self._param_grid.items():
+            self._param_grid[p_k] = _check_param(p_v)
+
+        if 'eval_set' not in fit_params:
+            raise ValueError(
+                    "When tuning parameters, at least "
+                    "a evaluation set is required.")
+
+        self._eval_score = np.argmax if self.greater_is_better else np.argmin
+        self._score_sign = -1 if self.greater_is_better else 1
+
+        rs = ParameterSampler(
+                n_iter=self.n_iter,
+                param_distributions=self._param_grid,
+                random_state=self.sampling_seed
+                )
+        self._param_combi, self._tuning_type = rs.sample()
+        self._trial_id = 1
+
+        if self.verbose > 0:
+            n_trials = self.n_iter if self._tuning_type is 'hyperopt' \
+                    else len(self._param_combi)
+            print("\n{} trials detected for {}\n".format(
+                n_trials, tuple(self.param_grid.keys())))
+
+    def _fit(self, X, y, fit_params, params=None):
+        """Private method to fit a single boosting model and extract results."""
+
+        model = self._build_model(params)
+        if isinstance(model, _BoostSelector):
+            model.fit(X=X, y=y, **fit_params)
+        else:
+            with contextlib.redirect_stdout(io.StringIO()):
+                model.fit(X=X, y=y, **fit_params)
+
+        results = {'params': params, 'status': 'ok'}
+
+        if isinstance(model, _BoostSelector):
+            results['booster'] = model.estimator_
+            results['model'] = model
+        else:
+            results['booster'] = model
+            results['model'] = None
+
+        if 'eval_set' not in fit_params:
+            return results
+
+        if self.boost_type_ == 'XGB':
+            # w/ eval_set and w/ early_stopping_rounds
+            if hasattr(results['booster'], 'best_score'):
+                results['iterations'] = results['booster'].best_iteration
+            # w/ eval_set and w/o early_stopping_rounds
+            else:
+                valid_id = list(results['booster'].evals_result_.keys())[-1]
+                eval_metric = list(results['booster'].evals_result_[valid_id])[-1]
+                results['iterations'] = \
+                        len(results['booster'].evals_result_[valid_id][eval_metric])
+        else:
+            # w/ eval_set and w/ early_stopping_rounds
+            if results['booster'].best_iteration_ is not None:
+                results['iterations'] = results['booster'].best_iteration_
+            # w/ eval_set and w/o early_stopping_rounds
+            else:
+                valid_id = list(results['booster'].evals_result_.keys())[-1]
+                eval_metric = list(results['booster'].evals_result_[valid_id])[-1]
+                results['iterations'] = \
+                        len(results['booster'].evals_result_[valid_id][eval_metric])
+
+        if self.boost_type_ == 'XGB':
+            # w/ eval_set and w/ early_stopping_rounds
+            if hasattr(results['booster'], 'best_score'):
+                results['loss'] = results['booster'].best_score
+            # w/ eval_set and w/o early_stopping_rounds
+            else:
+                valid_id = list(results['booster'].evals_result_.keys())[-1]
+                eval_metric = list(results['booster'].evals_result_[valid_id])[-1]
+                results['loss'] = \
+                        results['booster'].evals_result_[valid_id][eval_metric][-1]
+        else:
+            valid_id = list(results['booster'].best_score_.keys())[-1]
+            eval_metric = list(results['booster'].best_score_[valid_id])[-1]
+            results['loss'] = results['booster'].best_score_[valid_id][eval_metric]
+
+        if params is not None:
+            if self.verbose > 0:
+                msg = "trial: {} ### iterations: {} ### eval_score: {}".format(
+                        str(self._trial_id).zfill(4),
+                        str(results['iterations']).zfill(5),
+                        round(results['loss'], 5)
+                        )
+                print(msg)
+
+            self._trial_id += 1
+            results['loss'] *= self._score_sign
+
+        return results
+
+    def fit(self, X, y, trials=None, **fit_params):
+        self.boost_type_ = _check_boosting(self.estimator)
+
+        if self.param_grid is None:
+            results = self._fit(X, y, fit_params)
+
+            for v in vars(results['model']):
+                if v.endswith("_") and not v.startswith("__"):
+                    setattr(self, str(v), getattr(results['model'], str(v)))
+
+        else:
+            self._validate_param_grid(fit_params)
+
+            if self._tuning_type == 'hyperopt':
+                if trials is None:
+                    raise ValueError(
+                            "trials must be not None when using hyperopt."
+                            )
+
+                search = fmin(
+                        fn=lambda p: self._fit(
+                            params=p, X=X, y=y, fit_params=fit_params
+                            ),
+                        space=self._param_combi, algo=atpe.suggest,
+                        max_evals=self.n_iter, trials=trials,
+                        rstate=np.random.RandomState(self.sampling_seed),
+                        show_progressbar=False, verbose=0
+                        )
+                all_results = trials.results
+
+            else:
+                all_results = Parallel(
+                        n_jobs=self.n_jobs, verbose=self.verbose * int(bool(self.n_jobs))
+                        )(delayed(self._fit)(X, y, fit_params, params)
+                                for params in self._param_combi)
+
+            # extract results from parallel loops
+            self.trials_, self.iterations_, self.scores_, models = [], [], [], []
+            for job_res in all_results:
+                self.trials_.append(job_res['params'])
+                self.iterations_.append(job_res['iterations'])
+                self.scores_.append(self._score_sign * job_res['loss'])
+                if isinstance(job_res['model'], _BoostSelector):
+                    models.append(job_res['model'])
+                else:
+                    models.append(job_res['booster'])
+
+            # get the best
+            id_best = self._eval_score(self.scores_)
+            self.best_params_ = self.trials_[id_best]
+            self.best_iter_ = self.iterations_[id_best]
+            self.best_score_ = self.scores_[id_best]
+            self.estimator_ = models[id_best]
+
+            for v in vars(models[id_best]):
+                if v.endswith("_") and not v.startswith("__"):
+                    setattr(self, str(v), getattr(models[id_best], str(v)))
+
+        return self
+
+
+
+    def predict(self, X, **predict_params):
+        """Predict X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Samples.
+
+        **predict_params : Additional predict arguments.
+
+        Returns
+        -------
+        pred : ndarray of shape (n_samples,)
+            The predicted values.
+        """
+
+        check_is_fitted(self)
+
+        if hasattr(self, 'transform'):
+            X = self.transform(X)
+
+        return self.estimator_.predict(X, **predict_params)
+
+    def predict_proba(self, X, **predict_params):
+        """Predict X probabilities.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Samples.
+
+        **predict_params : Additional predict arguments.
+
+        Returns
+        -------
+        pred : ndarray of shape (n_samples, n_classes)
+            The predicted values.
+        """
+
+        check_is_fitted(self)
+
+        # raise original AttributeError
+        getattr(self.estimator_, 'predict_proba')
+
+        if hasattr(self, 'transform'):
+            X = self.transform(X)
+
+        return self.estimator_.predict_proba(X, **predict_params)
+
+    def score(self, X, y, sample_weight=None):
+        """Return the score on the given test data and labels.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Test samples.
+
+        y : array-like of shape (n_samples,)
+            True values for X.
+
+        sample_weight : array-like of shape (n_samples,), default=None
+            Sample weights.
+
+        Returns
+        -------
+        score : float
+            Accuracy for classification, R2 for regression.
+        """
+
+        check_is_fitted(self)
+
+        if hasattr(self, 'transform'):
+            X = self.transform(X)
+
+        return self.estimator_.score(X, y, sample_weight=sample_weight)
+
+
 
 class _BoostSelector(BaseEstimator, TransformerMixin):
     """Base class for feature selection meta-estimator.
@@ -326,8 +581,8 @@ class _BoostSelector(BaseEstimator, TransformerMixin):
 
         if shapes[1] != self.support_.shape[0]:
             raise ValueError(
-                "Expected {} features, received {}.".format(
-                    self.support_.shape[0], shapes[1]))
+                    "Expected {} features, received {}.".format(
+                        self.support_.shape[0], shapes[1]))
 
         if isinstance(X, np.ndarray):
             return X[:, self.support_]
@@ -362,6 +617,7 @@ class _BoostSelector(BaseEstimator, TransformerMixin):
         return mask if not indices else np.where(mask)[0]
 
 
+
 class _Boruta(_BoostSelector):
     """Base class for BoostBoruta meta-estimator.
 
@@ -375,14 +631,14 @@ class _Boruta(_BoostSelector):
     """
 
     def __init__(self,
-                 estimator, *,
-                 perc=100,
-                 alpha=0.05,
-                 max_iter=100,
-                 early_stopping_boruta_rounds=None,
-                 importance_type='feature_importances',
-                 train_importance=True,
-                 verbose=0):
+            estimator, *,
+            perc=100,
+            alpha=0.05,
+            max_iter=100,
+            early_stopping_boruta_rounds=None,
+            importance_type='feature_importances',
+            train_importance=True,
+            verbose=0):
 
         self.estimator = estimator
         self.perc = perc
@@ -424,26 +680,26 @@ class _Boruta(_BoostSelector):
         # add here possible estimator checks in each iteration
 
         _fit_params = _set_categorical_indexes(
-            self.support_, self._cat_support, _fit_params, duplicate=True)
+                self.support_, self._cat_support, _fit_params, duplicate=True)
 
         if feat_id_real is None:  # final model fit
             if 'eval_set' in _fit_params:
                 _fit_params['eval_set'] = list(map(lambda x: (
                     self.transform(x[0]), x[1]
-                ), _fit_params['eval_set']))
+                    ), _fit_params['eval_set']))
         else:
             if 'eval_set' in _fit_params:  # iterative model fit
                 _fit_params['eval_set'] = list(map(lambda x: (
                     self._create_X(x[0], feat_id_real), x[1]
-                ), _fit_params['eval_set']))
+                    ), _fit_params['eval_set']))
 
         if 'feature_name' in _fit_params:  # LGB
             _fit_params['feature_name'] = 'auto'
 
         if 'feature_weights' in _fit_params:  # XGB  import warnings
             warnings.warn(
-                "feature_weights is not supported when selecting features. "
-                "It's automatically set to None.")
+                    "feature_weights is not supported when selecting features. "
+                    "It's automatically set to None.")
             _fit_params['feature_weights'] = None
 
         return _fit_params, estimator
@@ -472,7 +728,7 @@ class _Boruta(_BoostSelector):
 
         return dec_reg
 
-    def fit(self, X, y, **fit_params):
+    def fit(self, X, y, n_cores_shap=-1, explainer_package='shap', check_additivity=True, **fit_params):
         """Fit the Boruta algorithm to automatically tune
         the number of selected features."""
 
@@ -492,20 +748,20 @@ class _Boruta(_BoostSelector):
         else:
             if self.early_stopping_boruta_rounds < 1:
                 raise ValueError(
-                    'early_stopping_boruta_rounds should be an integer >0.')
+                        'early_stopping_boruta_rounds should be an integer >0.')
             es_boruta_rounds = self.early_stopping_boruta_rounds
 
         importances = ['feature_importances', 'shap_importances']
         if self.importance_type not in importances:
             raise ValueError(
-                "importance_type must be one of {}. Get '{}'".format(
-                    importances, self.importance_type))
+                    "importance_type must be one of {}. Get '{}'".format(
+                        importances, self.importance_type))
 
         if self.importance_type == 'shap_importances':
             if not self.train_importance and not 'eval_set' in fit_params:
                 raise ValueError(
-                    "When train_importance is set to False, using "
-                    "shap_importances, pass at least a eval_set.")
+                        "When train_importance is set to False, using "
+                        "shap_importances, pass at least a eval_set.")
             eval_importance = not self.train_importance and 'eval_set' in fit_params
 
         shapes = np.shape(X)
@@ -518,13 +774,13 @@ class _Boruta(_BoostSelector):
 
         # holds the decision about each feature:
         # default (0); accepted (1); rejected (-1)
-        dec_reg = np.zeros(n_features, dtype=np.int)
-        dec_history = np.zeros((self.max_iter, n_features), dtype=np.int)
+        dec_reg = np.zeros(n_features, dtype=int)
+        dec_history = np.zeros((self.max_iter, n_features), dtype=int)
         # counts how many times a given feature was more important than
         # the best of the shadow features
-        hit_reg = np.zeros(n_features, dtype=np.int)
+        hit_reg = np.zeros(n_features, dtype=int)
         # record the history of the iterations
-        imp_history = np.zeros(n_features, dtype=np.float)
+        imp_history = np.zeros(n_features, dtype=float)
         sha_max_history = []
 
         for i in range(self.max_iter):
@@ -554,9 +810,14 @@ class _Boruta(_BoostSelector):
             else:
                 if eval_importance:
                     coefs = _shap_importances(
-                        estimator, _fit_params['eval_set'][-1][0])
+                            model=estimator, 
+                            X=_fit_params['eval_set'][-1][0], 
+                            n_cores_shap=n_cores_shap)
                 else:
-                    coefs = _shap_importances(estimator, _X)
+                    coefs = _shap_importances(
+                            model=estimator, 
+                            X=_X,
+                            n_cores_shap=n_cores_shap)
 
                     # separate importances of real and shadow features
             imp_sha = coefs[n_real:]
@@ -587,15 +848,15 @@ class _Boruta(_BoostSelector):
         confirmed = np.where(dec_reg == 1)[0]
         tentative = np.where(dec_reg == 0)[0]
 
-        self.support_ = np.zeros(n_features, dtype=np.bool)
-        self.ranking_ = np.ones(n_features, dtype=np.int) * 4
+        self.support_ = np.zeros(n_features, dtype=bool)
+        self.ranking_ = np.ones(n_features, dtype=int) * 4
         self.n_features_ = confirmed.shape[0]
         self.importance_history_ = imp_history[1:]
 
         if tentative.shape[0] > 0:
             tentative_median = np.nanmedian(imp_history[1:, tentative], axis=0)
             tentative_low = tentative[
-                np.where(tentative_median <= np.median(sha_max_history))[0]]
+                    np.where(tentative_median <= np.median(sha_max_history))[0]]
             tentative_up = np.setdiff1d(tentative, tentative_low)
 
             self.ranking_[tentative_low] = 3
@@ -608,9 +869,9 @@ class _Boruta(_BoostSelector):
 
         if (~self.support_).all():
             raise RuntimeError(
-                "Boruta didn't select any feature. Try to increase max_iter or "
-                "increase (if not None) early_stopping_boruta_rounds or "
-                "decrese perc.")
+                    "Boruta didn't select any feature. Try to increase max_iter or "
+                    "increase (if not None) early_stopping_boruta_rounds or "
+                    "decrese perc.")
 
         _fit_params, self.estimator_ = self._check_fit_params(fit_params)
         with contextlib.redirect_stdout(io.StringIO()):
@@ -627,13 +888,13 @@ class _RFE(_BoostSelector):
     """
 
     def __init__(self,
-                 estimator, *,
-                 min_features_to_select=None,
-                 step=1,
-                 greater_is_better=False,
-                 importance_type='feature_importances',
-                 train_importance=True,
-                 verbose=0):
+            estimator, *,
+            min_features_to_select=None,
+            step=1,
+            greater_is_better=False,
+            importance_type='feature_importances',
+            train_importance=True,
+            verbose=0):
 
         self.estimator = estimator
         self.min_features_to_select = min_features_to_select
@@ -651,20 +912,20 @@ class _RFE(_BoostSelector):
         # add here possible estimator checks in each iteration
 
         _fit_params = _set_categorical_indexes(
-            self.support_, self._cat_support, _fit_params)
+                self.support_, self._cat_support, _fit_params)
 
         if 'eval_set' in _fit_params:
             _fit_params['eval_set'] = list(map(lambda x: (
                 self.transform(x[0]), x[1]
-            ), _fit_params['eval_set']))
+                ), _fit_params['eval_set']))
 
         if 'feature_name' in _fit_params:  # LGB
             _fit_params['feature_name'] = 'auto'
 
         if 'feature_weights' in _fit_params:  # XGB  import warnings
             warnings.warn(
-                "feature_weights is not supported when selecting features. "
-                "It's automatically set to None.")
+                    "feature_weights is not supported when selecting features. "
+                    "It's automatically set to None.")
             _fit_params['feature_weights'] = None
 
         return _fit_params, estimator
@@ -688,7 +949,7 @@ class _RFE(_BoostSelector):
 
         return score
 
-    def fit(self, X, y, **fit_params):
+    def fit(self, X, y, n_cores_shap=-1, explainer_package='shap', check_additivity=True, **fit_params):
         """Fit the RFE algorithm to automatically tune
         the number of selected features."""
 
@@ -697,8 +958,8 @@ class _RFE(_BoostSelector):
         importances = ['feature_importances', 'shap_importances']
         if self.importance_type not in importances:
             raise ValueError(
-                "importance_type must be one of {}. Get '{}'".format(
-                    importances, self.importance_type))
+                    "importance_type must be one of {}. Get '{}'".format(
+                        importances, self.importance_type))
 
         # scoring controls the calculation of self.score_history_
         # scoring is used automatically when 'eval_set' is in fit_params
@@ -706,8 +967,8 @@ class _RFE(_BoostSelector):
         if self.importance_type == 'shap_importances':
             if not self.train_importance and not scoring:
                 raise ValueError(
-                    "When train_importance is set to False, using "
-                    "shap_importances, pass at least a eval_set.")
+                        "When train_importance is set to False, using "
+                        "shap_importances, pass at least a eval_set.")
             eval_importance = not self.train_importance and scoring
 
         shapes = np.shape(X)
@@ -733,12 +994,15 @@ class _RFE(_BoostSelector):
         if step <= 0:
             raise ValueError("Step must be >0.")
 
-        self.support_ = np.ones(n_features, dtype=np.bool)
-        self.ranking_ = np.ones(n_features, dtype=np.int)
+        self.support_ = np.ones(n_features, dtype=bool)
+        self.ranking_ = np.ones(n_features, dtype=int)
         if scoring:
             self.score_history_ = []
             eval_score = np.max if self.greater_is_better else np.min
             best_score = -np.inf if self.greater_is_better else np.inf
+
+        # Create object to store importance history
+        imp_history = np.zeros(n_features, dtype=float)
 
         while np.sum(self.support_) > min_features_to_select:
             # remaining features
@@ -754,14 +1018,25 @@ class _RFE(_BoostSelector):
             # get coefs
             if self.importance_type == 'feature_importances':
                 coefs = _feature_importances(estimator)
+            
             else:
                 if eval_importance:
                     coefs = _shap_importances(
-                        estimator, _fit_params['eval_set'][-1][0])
+                            model=estimator, 
+                            X=_fit_params['eval_set'][-1][0], 
+                            n_cores_shap=n_cores_shap)
                 else:
                     coefs = _shap_importances(
-                        estimator, self.transform(X))
+                            model=estimator, 
+                            X=self.transform(X),
+                            n_cores_shap=n_cores_shap)
+
+
             ranks = np.argsort(coefs)
+            # Record importance
+            remaining_features_imp = np.zeros(n_features, dtype=float) * np.nan
+            remaining_features_imp[self.support_] = coefs
+            imp_history = np.vstack((imp_history, remaining_features_imp))
 
             # eliminate the worse features
             threshold = min(step, np.sum(self.support_) - min_features_to_select)
@@ -797,6 +1072,7 @@ class _RFE(_BoostSelector):
                 self.ranking_ = best_ranking
                 self.estimator_ = best_estimator
         self.n_features_ = self.support_.sum()
+        self.importance_history_ = imp_history[1:]
 
         return self
 
@@ -809,13 +1085,13 @@ class _RFA(_BoostSelector):
     """
 
     def __init__(self,
-                 estimator, *,
-                 min_features_to_select=None,
-                 step=1,
-                 greater_is_better=False,
-                 importance_type='feature_importances',
-                 train_importance=True,
-                 verbose=0):
+            estimator, *,
+            min_features_to_select=None,
+            step=1,
+            greater_is_better=False,
+            importance_type='feature_importances',
+            train_importance=True,
+            verbose=0):
 
         self.estimator = estimator
         self.min_features_to_select = min_features_to_select
@@ -833,20 +1109,20 @@ class _RFA(_BoostSelector):
         # add here possible estimator checks in each iteration
 
         _fit_params = _set_categorical_indexes(
-            self.support_, self._cat_support, _fit_params)
+                self.support_, self._cat_support, _fit_params)
 
         if 'eval_set' in _fit_params:
             _fit_params['eval_set'] = list(map(lambda x: (
                 self._transform(x[0], inverse), x[1]
-            ), _fit_params['eval_set']))
+                ), _fit_params['eval_set']))
 
         if 'feature_name' in _fit_params:  # LGB
             _fit_params['feature_name'] = 'auto'
 
         if 'feature_weights' in _fit_params:  # XGB  import warnings
             warnings.warn(
-                "feature_weights is not supported when selecting features. "
-                "It's automatically set to None.")
+                    "feature_weights is not supported when selecting features. "
+                    "It's automatically set to None.")
             _fit_params['feature_weights'] = None
 
         return _fit_params, estimator
@@ -870,7 +1146,8 @@ class _RFA(_BoostSelector):
 
         return score
 
-    def fit(self, X, y, **fit_params):
+    def fit(self, X, y, n_cores_shap=-1, explainer_package='shap', check_additivity=True, **fit_params):
+
         """Fit the RFA algorithm to automatically tune
         the number of selected features."""
 
@@ -879,8 +1156,8 @@ class _RFA(_BoostSelector):
         importances = ['feature_importances', 'shap_importances']
         if self.importance_type not in importances:
             raise ValueError(
-                "importance_type must be one of {}. Get '{}'".format(
-                    importances, self.importance_type))
+                    "importance_type must be one of {}. Get '{}'".format(
+                        importances, self.importance_type))
 
         # scoring controls the calculation of self.score_history_
         # scoring is used automatically when 'eval_set' is in fit_params
@@ -888,8 +1165,8 @@ class _RFA(_BoostSelector):
         if self.importance_type == 'shap_importances':
             if not self.train_importance and not scoring:
                 raise ValueError(
-                    "When train_importance is set to False, using "
-                    "shap_importances, pass at least a eval_set.")
+                        "When train_importance is set to False, using "
+                        "shap_importances, pass at least a eval_set.")
             eval_importance = not self.train_importance and scoring
 
         shapes = np.shape(X)
@@ -918,14 +1195,17 @@ class _RFA(_BoostSelector):
         if step <= 0:
             raise ValueError("Step must be >0.")
 
-        self.support_ = np.zeros(n_features, dtype=np.bool)
-        self._support = np.ones(n_features, dtype=np.bool)
-        self.ranking_ = np.ones(n_features, dtype=np.int)
-        self._ranking = np.ones(n_features, dtype=np.int)
+        self.support_ = np.zeros(n_features, dtype=bool)
+        self._support = np.ones(n_features, dtype=bool)
+        self.ranking_ = np.ones(n_features, dtype=int)
+        self._ranking = np.ones(n_features, dtype=int)
         if scoring:
             self.score_history_ = []
             eval_score = np.max if self.greater_is_better else np.min
             best_score = -np.inf if self.greater_is_better else np.inf
+
+        # Create object to store importance history
+        imp_history = np.zeros(n_features, dtype=float)
 
         while np.sum(self._support) > min_features_to_select:
             # remaining features
@@ -956,14 +1236,27 @@ class _RFA(_BoostSelector):
             # get coefs
             if self.importance_type == 'feature_importances':
                 coefs = _feature_importances(_estimator)
+            
             else:
                 if eval_importance:
                     coefs = _shap_importances(
-                        _estimator, _fit_params['eval_set'][-1][0])
+                            model=_estimator, 
+                            X=_fit_params['eval_set'][-1][0], 
+                            n_cores_shap=n_cores_shap,
+                            check_additivity=check_additivity)
                 else:
                     coefs = _shap_importances(
-                        _estimator, self._transform(X, inverse=True))
+                            model=_estimator, 
+                            X=self._transform(X, inverse=True),
+                            n_cores_shap=n_cores_shap,
+                            check_additivity=check_additivity)
+
+
             ranks = np.argsort(-coefs)  # the rank is inverted
+            # Record importance
+            remaining_features_imp = np.zeros(n_features, dtype=float) * np.nan
+            remaining_features_imp[self._support] = coefs
+            imp_history = np.vstack((imp_history, remaining_features_imp))
 
             # add the best features
             threshold = min(step, np.sum(self._support) - min_features_to_select)
@@ -992,10 +1285,11 @@ class _RFA(_BoostSelector):
                 self.estimator_ = best_estimator
 
             if len(set(self.score_history_)) == 1:
-                self.support_ = np.ones(n_features, dtype=np.bool)
-                self.ranking_ = np.ones(n_features, dtype=np.int)
+                self.support_ = np.ones(n_features, dtype=bool)
+                self.ranking_ = np.ones(n_features, dtype=int)
                 self.estimator_ = all_features_estimator
         self.n_features_ = self.support_.sum()
+        self.importance_history_ = imp_history[1:]
 
         return self
 
@@ -1008,8 +1302,8 @@ class _RFA(_BoostSelector):
 
         if shapes[1] != self.support_.shape[0]:
             raise ValueError(
-                "Expected {} features, received {}.".format(
-                    self.support_.shape[0], shapes[1]))
+                    "Expected {} features, received {}.".format(
+                        self.support_.shape[0], shapes[1]))
 
         if inverse:
             if isinstance(X, np.ndarray):

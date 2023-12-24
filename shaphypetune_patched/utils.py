@@ -3,7 +3,8 @@ import numpy as np
 from itertools import product
 
 from shap import TreeExplainer
-
+from fasttreeshap import TreeExplainer as FastTreeExplainer
+# https://github.com/linkedin/FastTreeSHAP?tab=readme-ov-file#usage
 
 def _check_boosting(model):
     """Check if the estimator is a LGBModel or XGBModel.
@@ -24,17 +25,20 @@ def _check_boosting(model):
     return boost_type
 
 
-def _shap_importances(model, X):
+def _shap_importances(model, X, n_cores_shap=-1, explainer_package='shap', check_additivity=True):
     """Extract feature importances from fitted boosting models
-    using TreeExplainer from shap.
+    using TreeExplainer from shap or fasttreeshap (imported as FastTreeExplainer)
 
     Returns
     -------
     array of feature importances.
     """
-
-    explainer = TreeExplainer(
-        model, feature_perturbation="tree_path_dependent")
+    if explainer_package == "fasttreeshap":
+        explainer = FastTreeExplainer(model, feature_perturbation="tree_path_dependent", 
+                n_jobs=n_cores_shap, check_additivity=check_additivity)
+    else:
+        explainer = TreeExplainer(model, feature_perturbation="tree_path_dependent")
+ 
     coefs = explainer.shap_values(X)
 
     if isinstance(coefs, list):
@@ -65,7 +69,7 @@ def _feature_importances(model):
 def _get_categorical_support(n_features, fit_params):
     """Obtain boolean mask for categorical features"""
 
-    cat_support = np.zeros(n_features, dtype=np.bool)
+    cat_support = np.zeros(n_features, dtype=bool)
     cat_ids = []
 
     msg = "When manually setting categarical features, " \

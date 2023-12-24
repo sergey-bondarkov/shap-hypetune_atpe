@@ -4,13 +4,13 @@ from setuptools import setup, find_packages
 HERE = pathlib.Path(__file__).parent
 
 VERSION = '0.2.6'
-PACKAGE_NAME = 'shap-hypetune'
+PACKAGE_NAME = 'shap-hypetune_atpe'
 AUTHOR = 'Marco Cerliani'
 AUTHOR_EMAIL = 'cerlymarco@gmail.com'
 URL = 'https://github.com/cerlymarco/shap-hypetune'
 
 LICENSE = 'MIT'
-DESCRIPTION = 'A python package for simultaneous Hyperparameters Tuning and Features Selection for Gradient Boosting Models.'
+DESCRIPTION = "Fork of Marco Cerliani's shap-hypetune package to use ATPE in feature selection"
 LONG_DESCRIPTION = (HERE / "README.md").read_text()
 LONG_DESC_TYPE = "text/markdown"
 

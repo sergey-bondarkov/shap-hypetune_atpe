@@ -1,9 +1,8 @@
 from sklearn.base import clone
 
-from ._classes import _BoostSearch, _Boruta, _RFA, _RFE
+from ._classes import _BoostSelector, _BoostSearch_TPE, _BoostSearch_ATPE, _Boruta, _RFA, _RFE
 
-
-class BoostSearch(_BoostSearch):
+class BoostSearch_TPE(_BoostSearch_TPE):
     """Hyperparamater searching and optimization on a given validation set
     for LGBModel or XGBModel. 
 
@@ -110,8 +109,34 @@ class BoostSearch(_BoostSearch):
 
         return model
 
+# Modified BoostSearch from shaphypetune, uses Adaptive TPE
+class BoostSearch_ATPE(_BoostSearch_ATPE):
 
-class BoostBoruta(_BoostSearch, _Boruta):
+    def __init__(self,
+            estimator, *,
+            param_grid,
+            greater_is_better=False,
+            n_iter=None,
+            sampling_seed=None,
+            verbose=1,
+            n_jobs=None):
+        self.estimator = estimator
+        self.param_grid = param_grid
+        self.greater_is_better = greater_is_better
+        self.n_iter = n_iter
+        self.sampling_seed = sampling_seed
+        self.verbose = verbose
+        self.n_jobs = n_jobs
+
+    def _build_model(self, params):
+        """Private method to build model."""
+
+        model = clone(self.estimator)
+        model.set_params(**params)
+
+        return model
+
+class BoostBoruta(_BoostSearch_TPE, _Boruta):
     """Simultaneous features selection with Boruta algorithm and hyperparamater
     searching on a given validation set for LGBModel or XGBModel.
 
@@ -264,7 +289,8 @@ class BoostBoruta(_BoostSearch, _Boruta):
     """
 
     def __init__(self,
-                 estimator, *,
+                 estimator,
+                 *,
                  perc=100,
                  alpha=0.05,
                  max_iter=100,
@@ -325,7 +351,7 @@ class BoostBoruta(_BoostSearch, _Boruta):
         return model
 
 
-class BoostRFE(_BoostSearch, _RFE):
+class BoostRFE(_BoostSearch_TPE, _RFE):
     """Simultaneous features selection with RFE and hyperparamater searching
     on a given validation set for LGBModel or XGBModel.
 
@@ -527,7 +553,7 @@ class BoostRFE(_BoostSearch, _RFE):
         return model
 
 
-class BoostRFA(_BoostSearch, _RFA):
+class BoostRFA(_BoostSearch_TPE, _RFA):
     """Simultaneous features selection with RFA and hyperparamater searching
     on a given validation set for LGBModel or XGBModel.
 
