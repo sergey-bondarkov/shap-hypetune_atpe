@@ -34,11 +34,11 @@ def _shap_importances(model, X, n_cores_shap=-1, explainer_package='shap', check
     array of feature importances.
     """
     if explainer_package == "fasttreeshap":
-        print("FastTreeExplainer")
+        #  print("FastTreeExplainer")
         explainer = FastTreeExplainer(model, feature_perturbation="tree_path_dependent", 
                 n_jobs=n_cores_shap, check_additivity=check_additivity)
     else:
-        print("TreeExplainer")
+        #  print("TreeExplainer")
         explainer = TreeExplainer(model, feature_perturbation="tree_path_dependent")
  
     coefs = explainer.shap_values(X)
