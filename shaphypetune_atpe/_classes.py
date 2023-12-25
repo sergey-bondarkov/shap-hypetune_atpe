@@ -812,12 +812,16 @@ class _Boruta(_BoostSelector):
                     coefs = _shap_importances(
                             model=estimator, 
                             X=_fit_params['eval_set'][-1][0], 
-                            n_cores_shap=n_cores_shap)
+                            explainer_package=explainer_package,
+                            n_cores_shap=n_cores_shap,
+                            check_additivity=check_additivity)
                 else:
                     coefs = _shap_importances(
                             model=estimator, 
                             X=_X,
-                            n_cores_shap=n_cores_shap)
+                            explainer_package=explainer_package,
+                            n_cores_shap=n_cores_shap,
+                            check_additivity=check_additivity)
 
                     # separate importances of real and shadow features
             imp_sha = coefs[n_real:]
@@ -1024,12 +1028,16 @@ class _RFE(_BoostSelector):
                     coefs = _shap_importances(
                             model=estimator, 
                             X=_fit_params['eval_set'][-1][0], 
-                            n_cores_shap=n_cores_shap)
+                            explainer_package=explainer_package,
+                            n_cores_shap=n_cores_shap,
+                            check_additivity=check_additivity)
                 else:
                     coefs = _shap_importances(
                             model=estimator, 
                             X=self.transform(X),
-                            n_cores_shap=n_cores_shap)
+                            explainer_package=explainer_package,
+                            n_cores_shap=n_cores_shap,
+                            check_additivity=check_additivity)
 
 
             ranks = np.argsort(coefs)
@@ -1243,12 +1251,14 @@ class _RFA(_BoostSelector):
                             model=_estimator, 
                             X=_fit_params['eval_set'][-1][0], 
                             n_cores_shap=n_cores_shap,
+                            explainer_package=explainer_package,
                             check_additivity=check_additivity)
                 else:
                     coefs = _shap_importances(
                             model=_estimator, 
                             X=self._transform(X, inverse=True),
                             n_cores_shap=n_cores_shap,
+                            explainer_package=explainer_package,
                             check_additivity=check_additivity)
 
 
